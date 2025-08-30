@@ -170,7 +170,7 @@ def l_infty_coreset(P):
     return sorted(list(S_prime))
 
 # Algorithm 2: CORESET
-def coreset(P, m):
+def kmean_prune(P, m):
     print(f"Running CORESET to select {m} points from matrix of shape {P.shape}...")
     if P.shape[0] > 8:
         Q, _ = pca(P, 8)

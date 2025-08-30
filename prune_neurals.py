@@ -1,5 +1,5 @@
 import torch.nn as nn
-from utils import base_method_coreset, kmean_prune
+from .utils import base_method_coreset, kmean_prune
 import torch
 
 class PruneNeurals():
@@ -12,7 +12,8 @@ class PruneNeurals():
         try:    
             layer1.out_features != layer2.in_features
         except Exception as e:
-            print(f"InOutFeatureError: the out feature of layer 1 is {layer1.out_features} but the in feature of layer 2 is {layer2.in_features}"):
+            print(f"InOutFeatureError: the out feature of layer 1 is {layer1.out_features} but the in feature of layer 2 is {layer2.in_features}")
+            
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             print(f"Using device: {device}")
@@ -29,7 +30,7 @@ class PruneNeurals():
         if method == 'base':
             coreset = base_method_coreset
         
-        elif method == 'kmean':
+        elif method == 'kmeans':
             coreset = kmean_prune
         else:
             
