@@ -58,7 +58,7 @@ class PruneNeurals():
         
 
         # Chọn các cột của ma trận trọng số tương ứng với các nơ-ron được giữ lại
-        selected_weights = layer2.weight.data[:, sampled_indices]
+        selected_weights = layer2.weight.data[:, sampled_indices].to(device=device)
         # Nhân các cột với u
         new_next_W = selected_weights * u_tensor.unsqueeze(0)  # Broadcasting: (out_features, m) * (1, m)
         # Tạo tầng mới với kích thước phù hợp
