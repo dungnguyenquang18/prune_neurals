@@ -1,5 +1,5 @@
 import torch.nn as nn
-from .utils import base_method_coreset, kmean_prune
+from .methods import base_method_coreset, kmean_prune
 import torch
 
 class PruneNeurals():
@@ -39,7 +39,7 @@ class PruneNeurals():
         C, u, sampled_indices = coreset(W, m) #shape: m, l3
         u_tensor = torch.tensor(u, device=device, dtype=torch.float32)
         new_l2 = len(C)
-        new_W = W[sampled_indices] #shape: new_l2, l3
+        new_W = W[sampled_indices].to(device) #shape: new_l2, l3
         # Apply weights along the first dimension (new_l2)
         new_W = new_W * u_tensor.unsqueeze(1)  # u_tensor: (new_l2,) -> (new_l2, 1) for broadcasting
         new_W = new_W.T #shape: l3, new_l2
