@@ -85,9 +85,79 @@ def compute_mvee_torch(P_prime):
 
 # Hàm tìm Carathéodory set
 def caratheodory_set(v, P, r):
-    distances = torch.norm(P - v, dim=1)
-    idx = torch.topk(distances, r + 1, largest=False).indices
-    return P[idx]
+    """
+    Computes the Caratheodory set for point v in the convex hull of points P.
+    :param v: torch.tensor or np.array of shape (d,), the target point.
+    :param P: torch.tensor or np.array of shape (n, d), the set of points.
+    :param r: int, the rank of P (dimension of the affine subspace).
+    :return: torch.tensor of indices from P that form the Caratheodory set.
+    """
+    # Convert to numpy if torch tensors
+    if hasattr(P, 'numpy'):
+        P = P.cpu().numpy()
+    else:
+        P = np.array(P)
+    
+    if hasattr(v, 'numpy'):
+        v = v.cpu().numpy()
+    else:
+        v = np.array(v)
+    
+    n, d = P.shape
+    tol = 1e-8
+    
+    # Set up the linear program to find initial weights u >= 0 such that P.T @ u = v and sum(u) = 1
+    A_eq = np.vstack((P.T, np.ones(n)))
+    b_eq = np.hstack((v, 1))
+    c = np.zeros(n)  # No objective, just feasibility
+    
+    res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')
+    
+    if not res.success:
+        raise ValueError("No feasible solution found for the convex combination.")
+    
+    u = res.x
+    support = np.where(u > tol)[0]
+    u = u[support]
+    points = P[support]
+    
+    # Sparsify until size <= r + 1
+    while len(support) > r + 1:
+        m = len(support)
+        
+        # Construct matrix A = [points.T; ones(1, m)]
+        A = np.vstack((points.T, np.ones(m)))
+        
+        # Find a vector in the null space using SVD
+        _, s, Vt = svd(A, full_matrices=False)
+        if s[-1] > 1e-6:
+            raise ValueError("Unexpected full rank in null space computation.")
+        
+        alpha = Vt[-1, :]
+        
+        # Ensure there are positive components (flip if necessary)
+        pos_idx = alpha > 0
+        if not np.any(pos_idx):
+            alpha = -alpha
+            pos_idx = alpha > 0
+            if not np.any(pos_idx):
+                raise ValueError("No positive direction in alpha.")
+        
+        # Compute t = min(u[i] / alpha[i] for alpha[i] > 0)
+        t_candidates = u[pos_idx] / alpha[pos_idx]
+        t = np.min(t_candidates)
+        
+        # Update u = u - t * alpha
+        u -= t * alpha
+        u = np.maximum(u, 0)  # Clip negative due to numerical issues
+        
+        # Remove points with u <= tol
+        keep = u > tol
+        u = u[keep]
+        points = points[keep]
+        support = support[keep]
+    
+    return torch.tensor(support)
 
 # Thuật toán l∞-CORESET
 def l_infty_coreset(P):
