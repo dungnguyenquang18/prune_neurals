@@ -23,7 +23,7 @@ class PruneNeurals():
         
         print(f"Starting pruning layer 1 with prune_ratio={prune_ratio}...")
         
-        W = layer1.weight.data.cpu().numpy()  # Trọng số của tầng hiện tại
+        W = layer1.weight.data.cpu()  # Trọng số của tầng hiện tại
         n, d = W.shape
         m = int(n * (1 - prune_ratio))  # Số nơ-ron giữ lại
         coreset = None

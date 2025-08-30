@@ -37,6 +37,11 @@ def pca(P: torch.Tensor, new_dim: int) -> Tuple[torch.Tensor, torch.Tensor]:
     Returns reduced data (torch.Tensor) and explained variances (torch.Tensor).
     """
     print(f"starting reduce dimensions from {P.shape[1]} to {new_dim}")
+    
+    # Đảm bảo P là tensor và có device
+    if not isinstance(P, torch.Tensor):
+        raise TypeError(f"P must be a torch.Tensor, got {type(P)}")
+    
     device = P.device
     
     # Chuyển sang numpy
@@ -70,25 +75,35 @@ def cluster(P):
     return kmeans_torch(P, k+1)
 
 
-def kmeans_torch(P, k, max_iters=100, tol=1e-4, device=None):
-    mu = torch.mean(P, dim = 0)
-    diff = P - mu
-    dist = torch.norm(diff, dim=1)
-    _, indices = torch.sort(dist)
-    clusters = []
-    # print(indices.shape)
-    n = P.shape[0]
-    l = n//k
-    # print(l)
-    for i in range(0, k):
-        # print(f"{i*k}  {i*l+l}")
-        clusters.append(P[indices[i*l:i*l+l]])
-    
-    if n%k != 0:
-        clusters.append(P[indices[k*l:]])
-    
-    
-    return clusters, _
+def kmeans_torch(points, k, max_iters=100, tol=1e-4, device=None):
+    if device is None:
+        device = points.device
+    else:
+        points = points.to(device)
+
+    n, d = points.shape
+    indices = torch.randperm(n, device=device)[:k]
+    centroids = points[indices]
+
+    for _ in range(max_iters):
+        distances = torch.cdist(points, centroids)  # [n, k]
+        labels = torch.argmin(distances, dim=1)     # [n]
+
+        new_centroids = torch.stack([
+            points[labels == i].mean(dim=0) if torch.any(labels == i) else centroids[i]
+            for i in range(k)
+        ])
+
+        shift = torch.norm(new_centroids - centroids, dim=1).sum()
+        centroids = new_centroids
+        if shift < tol:
+            break
+
+    # Gom thành k cụm (list các tensor)
+    clusters = [points[labels == i] for i in range(k)]
+
+    return clusters, centroids
+
 
 
 def compute_rank(matrix, device=None):
@@ -146,6 +161,11 @@ def caratheodory_set(v, P, r):
 # Thuật toán l∞-CORESET
 def l_infty_coreset(P):
     print(f"Running l∞-CORESET on matrix of shape {P.shape}...")
+    
+    # Đảm bảo P là tensor
+    if not isinstance(P, torch.Tensor):
+        raise TypeError(f"P must be a torch.Tensor, got {type(P)}")
+    
     n, d = P.shape
     r = torch.linalg.matrix_rank(P).item()
 
