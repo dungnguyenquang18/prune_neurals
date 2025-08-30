@@ -116,7 +116,8 @@ def l_infty_coreset(P):
     return S
 
 # Algorithm 2: CORESET
-def base_method_coreset(P, m):
+def base_method_coreset(P_, m):
+    P = P_.numpy()
     print(f"Running CORESET to select {m} points from matrix of shape {P.shape}...")
     n, d = P.shape
     Q = P.copy()

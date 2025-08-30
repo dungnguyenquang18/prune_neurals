@@ -18,14 +18,6 @@ class PruneNeurals():
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             print(f"Using device: {device}")
 
-
-
-        
-        print(f"Starting pruning layer 1 with prune_ratio={prune_ratio}...")
-        
-        W = layer1.weight.data.cpu()  # Trọng số của tầng hiện tại
-        n, d = W.shape
-        m = int(n * (1 - prune_ratio))  # Số nơ-ron giữ lại
         coreset = None
         if method == 'base':
             coreset = base_method_coreset
@@ -35,41 +27,40 @@ class PruneNeurals():
         else:
             
             pass
-        
-        C, u, sampled_indices = coreset(W, m)
-        
-        # Cập nhật tầng hiện tại (layer l)
-        new_out_features = len(C)
-        new_W = torch.zeros((new_out_features, d), device=device)
-        new_bias = torch.zeros(new_out_features, device=device)
-        
-        # Nhân trọng số của tầng hiện tại với u để điều chỉnh đầu ra
-        u_tensor = torch.tensor(u, device=device, dtype=torch.float32)
-        for i, idx in enumerate(sampled_indices):
-            new_W[i] = layer1.weight.data[idx] * u_tensor[i]  # Nhân với u tại tầng hiện tại
-            new_bias[i] = layer1.bias.data[idx] * u_tensor[i]  # Nhân bias với u
-        
-        new_layer = nn.Linear(d, new_out_features)
-        new_layer.weight.data = new_W
-        new_layer.bias.data = new_bias
- 
-        
-        # Tìm và cập nhật tầng Linear tiếp theo (layer l+1)
-        
 
-        # Chọn các cột của ma trận trọng số tương ứng với các nơ-ron được giữ lại
-        selected_weights = layer2.weight.data[:, sampled_indices].to(device=device)
-        # Nhân các cột với u
-        new_next_W = selected_weights * u_tensor.unsqueeze(0)  # Broadcasting: (out_features, m) * (1, m)
-        # Tạo tầng mới với kích thước phù hợp
-        new_next_layer = nn.Linear(new_out_features, layer2.out_features)
-        new_next_layer.weight.data = new_next_W
-        new_next_layer.bias.data = layer2.bias.data  # Giữ nguyên bias
+        
+        print(f"Starting pruning layer 1 with prune_ratio={prune_ratio}...")
+        
+        W = layer2.weight.data.T.cpu()  # shape: l2, l3
+        print(f"W shape: {W.shape}")
+        l2, l3 = W.shape #need to modify d
+        m = int(l2 * (1 - prune_ratio))  # Số nơ-ron giữ lại
+        
+        C, u, sampled_indices = coreset(W, m) #shape: m, l3
+        u_tensor = torch.tensor(u, device=device, dtype=torch.float32)
+        new_l2 = len(C)
+        new_W = W[sampled_indices] #shape: new_l2, l3
+        # Apply weights along the first dimension (new_l2)
+        new_W = new_W * u_tensor.unsqueeze(1)  # u_tensor: (new_l2,) -> (new_l2, 1) for broadcasting
+        new_W = new_W.T #shape: l3, new_l2
+        new_layer2 = nn.Linear(new_l2, l3)
+        new_layer2.weight.data = new_W
+        new_layer2.bias.data = layer2.bias.data
+        
+        
+        new_layer1 = nn.Linear(layer1.in_features, new_l2)
+        new_layer1.weight.data = layer1.weight.data[sampled_indices]
+        new_layer1.bias.data = layer1.bias.data[sampled_indices]
+        
+        
+        
+        
+        
 
         
         
         # print(f"Pruning layer {layer_idx} completed!")
-        return new_layer, new_next_layer
+        return new_layer1, new_layer2
 
 
         
