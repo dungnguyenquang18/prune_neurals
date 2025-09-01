@@ -127,20 +127,50 @@ def compute_rank(matrix, device=None):
 # Hàm tính MVEE
 def compute_mvee_torch(P_prime):
     n, d = P_prime.shape
+    
+    # Handle edge cases
+    if n <= 1:
+        # If only one point, return it as the center with identity covariance
+        c = P_prime.mean(dim=0)
+        G = torch.eye(d, device=P_prime.device, dtype=P_prime.dtype)
+        vertices = P_prime.unsqueeze(0)  # Single vertex
+        return G, c, vertices
+    
     P_np = P_prime.cpu().numpy()
 
+    # Check if points are all the same
+    if np.allclose(P_np, P_np[0], atol=1e-8):
+        c = torch.from_numpy(P_np[0]).float()
+        G = torch.eye(d, device=P_prime.device, dtype=P_prime.dtype)
+        vertices = c.unsqueeze(0)  # Single vertex
+        return G, c, vertices
+
     # Sử dụng EllipticEnvelope để tính Löwner ellipsoid
-    clf = EllipticEnvelope(support_fraction=1.0, contamination=0.01, random_state=42)
-    clf.fit(P_np)
-    c_np = clf.location_
-    Sigma_np = clf.covariance_
+    try:
+        clf = EllipticEnvelope(support_fraction=1.0, contamination=0.01, random_state=42)
+        clf.fit(P_np)
+        c_np = clf.location_
+        Sigma_np = clf.covariance_
+        
+        # Check for singular covariance matrix
+        if np.linalg.cond(Sigma_np) > 1e12:
+            # Use regularized covariance
+            Sigma_np = Sigma_np + 1e-6 * np.eye(d)
+    except:
+        # Fallback: use sample mean and covariance
+        c_np = np.mean(P_np, axis=0)
+        Sigma_np = np.cov(P_np.T) + 1e-6 * np.eye(d)
 
     c = torch.from_numpy(c_np).float()
     Sigma = torch.from_numpy(Sigma_np).float()
+    
+    # Ensure Sigma is positive definite
+    eigenvalues, eigenvectors = torch.linalg.eigh(Sigma)
+    eigenvalues = torch.clamp(eigenvalues, min=1e-8)  # Ensure positive eigenvalues
+    Sigma = eigenvectors @ torch.diag(eigenvalues) @ eigenvectors.T
     G = torch.linalg.inv(Sigma)
 
     # Tính 2*d vertices: các điểm tiếp xúc của ellipsoid với các mặt phẳng theo trục chính
-    eigenvalues, eigenvectors = torch.linalg.eigh(Sigma)
     sqrt_eigenvalues = torch.sqrt(eigenvalues)
     vertices_list = []
     for i in range(d):
@@ -243,24 +273,33 @@ def l_infty_coreset(P):
         raise TypeError(f"P must be a torch.Tensor, got {type(P)}")
     
     n, d = P.shape
+    
+    # Handle edge cases
+    if n <= 1:
+        return [0] if n == 1 else []
+    
     r = torch.linalg.matrix_rank(P).item()
+    r = min(r, d)  # Ensure r doesn't exceed dimensions
 
     # Bước 1: chiếu P về không gian affine bậc r
-    
+    if r < d:
+        P_prime, _ = pca(P, r)
+    else:
+        P_prime = P
 
     # Bước 2: tính MVEE trong không gian r chiều
-    G, c, vertices = compute_mvee_torch(P)
+    G, c, vertices = compute_mvee_torch(P_prime)
 
     # Bước 3: tìm coreset
     S_prime = set()
     for v in vertices:
-        K = caratheodory_set(v, P, r)
+        # Check if vertex contains invalid values
+        if torch.any(torch.isnan(v)) or torch.any(torch.isinf(v)):
+            continue
+            
+        K = caratheodory_set(v, P_prime, r)
         for x in K:
-            S_prime.add(x)
-    
-
-
-    
+            S_prime.add(x.item() if hasattr(x, 'item') else x)
 
     print(f"l∞-CORESET completed, selected {len(S_prime)} points.")
     return sorted(list(S_prime))
