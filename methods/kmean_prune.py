@@ -246,15 +246,15 @@ def l_infty_coreset(P):
     r = torch.linalg.matrix_rank(P).item()
 
     # Bước 1: chiếu P về không gian affine bậc r
-    P_prime, _ = pca(P, 8)
+    
 
     # Bước 2: tính MVEE trong không gian r chiều
-    G, c, vertices = compute_mvee_torch(P_prime)
+    G, c, vertices = compute_mvee_torch(P)
 
     # Bước 3: tìm coreset
     S_prime = set()
     for v in vertices:
-        K = caratheodory_set(v, P_prime, r)
+        K = caratheodory_set(v, P, r)
         for x in K:
             S_prime.add(x)
     
