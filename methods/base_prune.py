@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from scipy.spatial import ConvexHull
 from sklearn.covariance import EllipticEnvelope
+from scipy.optimize import linprog
 
 # Thiết lập device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,14 +84,15 @@ def compute_mvee_torch(P_prime):
 
     return G, c, vertices
 
-# Hàm tìm Carathéodory set
+
+
 def caratheodory_set(v, P, r):
     """
     Computes the Caratheodory set for point v in the convex hull of points P.
     :param v: torch.tensor or np.array of shape (d,), the target point.
     :param P: torch.tensor or np.array of shape (n, d), the set of points.
     :param r: int, the rank of P (dimension of the affine subspace).
-    :return: torch.tensor of indices from P that form the Caratheodory set.
+    :return: torch.tensor of indices from P that form the Caratheodory set, or empty tensor if infeasible.
     """
     # Convert to numpy if torch tensors
     if hasattr(P, 'numpy'):
@@ -109,29 +111,31 @@ def caratheodory_set(v, P, r):
     # Set up the linear program to find initial weights u >= 0 such that P.T @ u = v and sum(u) = 1
     A_eq = np.vstack((P.T, np.ones(n)))
     b_eq = np.hstack((v, 1))
-    c = np.zeros(n)  # No objective, just feasibility
+    c = np.zeros(n)  # Minimize sum of weights (feasibility problem)
     
     res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')
     
     if not res.success:
-        raise ValueError("No feasible solution found for the convex combination.")
+        return torch.tensor([], dtype=torch.long)  # Return empty tensor if no feasible solution
     
     u = res.x
     support = np.where(u > tol)[0]
-    u = u[support]
-    points = P[support]
+    
+    if len(support) == 0:
+        return torch.tensor([], dtype=torch.long)  # Return empty if no significant weights
     
     # Sparsify until size <= r + 1
+    points = P[support]
+    u = u[support]
+    
     while len(support) > r + 1:
         m = len(support)
-        
-        # Construct matrix A = [points.T; ones(1, m)]
         A = np.vstack((points.T, np.ones(m)))
         
         # Find a vector in the null space using SVD
-        _, s, Vt = svd(A, full_matrices=False)
-        if s[-1] > 1e-6:
-            raise ValueError("Unexpected full rank in null space computation.")
+        _, s, Vt = np.linalg.svd(A, full_matrices=False)
+        if s[-1] > 1e-6:  # Check if rank is full (numerical tolerance)
+            return torch.tensor([], dtype=torch.long)  # Infeasible if no null space
         
         alpha = Vt[-1, :]
         
@@ -141,10 +145,12 @@ def caratheodory_set(v, P, r):
             alpha = -alpha
             pos_idx = alpha > 0
             if not np.any(pos_idx):
-                raise ValueError("No positive direction in alpha.")
+                return torch.tensor([], dtype=torch.long)  # No valid direction
         
         # Compute t = min(u[i] / alpha[i] for alpha[i] > 0)
         t_candidates = u[pos_idx] / alpha[pos_idx]
+        if len(t_candidates) == 0:
+            return torch.tensor([], dtype=torch.long)  # No valid t
         t = np.min(t_candidates)
         
         # Update u = u - t * alpha
@@ -153,11 +159,13 @@ def caratheodory_set(v, P, r):
         
         # Remove points with u <= tol
         keep = u > tol
+        if not np.any(keep):
+            return torch.tensor([], dtype=torch.long)  # No points remain
         u = u[keep]
         points = points[keep]
         support = support[keep]
     
-    return torch.tensor(support)
+    return torch.tensor(support, dtype=torch.long)
 
 # Thuật toán l∞-CORESET
 def l_infty_coreset(P):
