@@ -95,13 +95,13 @@ def caratheodory_set(v, P, r):
     :return: torch.tensor of indices from P that form the Caratheodory set, or empty tensor if infeasible.
     """
     # Convert to numpy if torch tensors
-    if hasattr(P, 'numpy'):
-        P = P.cpu().numpy()
+    if hasattr(P, 'detach'):
+        P = P.detach().cpu().numpy()
     else:
         P = np.array(P)
-    
-    if hasattr(v, 'numpy'):
-        v = v.cpu().numpy()
+
+    if hasattr(v, 'detach'):
+        v = v.detach().cpu().numpy()
     else:
         v = np.array(v)
     
@@ -165,37 +165,46 @@ def caratheodory_set(v, P, r):
         points = points[keep]
         support = support[keep]
     
-    return torch.tensor(support, dtype=torch.long)
+    return np.array(support, dtype=np.int64)
 
 # Thuật toán l∞-CORESET
-def l_infty_coreset(P):
-    print(f"Running l∞-CORESET on matrix of shape {P.shape}...")
-    n, d = P.shape
-    r = torch.linalg.matrix_rank(P).item()
+def l_infty_coreset(P_input):
+    print(f"Running l∞-CORESET on matrix of shape {P_input.shape}...")
+    # Normalize input to torch tensor (on CPU for linear algebra and sklearn interop)
+    if hasattr(P_input, 'detach'):
+        P_torch = P_input.detach().cpu()
+    else:
+        P_torch = torch.from_numpy(np.array(P_input, dtype=np.float32))
 
-    # Bước 1: chiếu P về không gian affine bậc r
-    P_prime, Y, z = project_to_affine_subspace(P, r)
+    n, d = P_torch.shape
+    r = torch.linalg.matrix_rank(P_torch).item()
 
-    # Bước 2: tính MVEE trong không gian r chiều
+    # Step 1: project to affine subspace of rank r
+    P_prime, Y, z = project_to_affine_subspace(P_torch, r)
+
+    # Step 2: compute MVEE in r-dimensional space
     G, c, vertices = compute_mvee_torch(P_prime)
 
-    # Bước 3: tìm coreset
-    S_prime = set()
+    # Step 3: find coreset (collect indices in projected space)
+    indices_set = set()
     for v in vertices:
-        K = caratheodory_set(v, P_prime, r)
-        for p in K:
-            S_prime.add(tuple(p.tolist()))
+        K = caratheodory_set(v, P_prime, r)  # indices into P_prime
+        if K is None or len(K) == 0:
+            continue
+        for idx in np.atleast_1d(K):
+            indices_set.add(int(idx))
 
-    # Bước 4: ánh xạ lại về không gian gốc
-    S_prime_tensor = torch.tensor(list(S_prime), device=P.device)
-    S = recover_from_projection(S_prime_tensor, Y, z)
-
-    print(f"l∞-CORESET completed, selected {len(S)} points.")
-    return S
+    indices_array = np.array(sorted(indices_set), dtype=np.int64)
+    print(f"l∞-CORESET completed, selected {len(indices_array)} points.")
+    return indices_array
 
 # Algorithm 2: CORESET
 def base_method_coreset(P_, m):
-    P = P_.numpy()
+    # Accept torch tensor or numpy array
+    if hasattr(P_, 'detach'):
+        P = P_.detach().cpu().numpy()
+    else:
+        P = np.array(P_, copy=True)
     print(f"Running CORESET to select {m} points from matrix of shape {P.shape}...")
     n, d = P.shape
     Q = P.copy()
@@ -203,12 +212,10 @@ def base_method_coreset(P_, m):
     sensitivities = np.zeros(n)
     indices = np.arange(n)
     while len(Q) >= 4 * np.linalg.matrix_rank(Q)**2:
-        S = l_infty_coreset(Q)
+        S = l_infty_coreset(Q)  # indices into current Q
         r = np.linalg.matrix_rank(Q)
-        S_indices = []
-        for s in S:
-            idx = np.where((Q == s).all(axis=1))[0][0]
-            S_indices.append(idx)
+        S_indices = list(map(int, S))
+        for idx in S_indices:
             sensitivities[indices[idx]] = r**1.5 / i
         mask = np.ones(len(Q), dtype=bool)
         mask[S_indices] = False
