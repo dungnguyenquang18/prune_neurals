@@ -31,7 +31,7 @@ class PruneNeurals():
             else:
                 coreset = kmedoids
         except Exception as e:
-            print(f'Method name eror. The method name must be in {method_name}')
+            print(f'Method name eror. The method name must be in {self.method_name}')
             
             
 
