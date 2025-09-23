@@ -5,8 +5,8 @@ import torch
 class Prunner():
     def __init__(self):
         self.method_name = {
-            'Prune neurels': ['base', 'kmeans', 'distance-based-clustering, kmedoids'],
-            'Prune dataset': ['base', 'kmeans', 'distance-based-clustering, kmedoids']
+            'Prune neurels': ['base', 'kmeans', 'distance-based-clustering', 'kmedoids'],
+            'Prune dataset': ['base', 'kmeans', 'distance-based-clustering', 'kmedoids']
                             } 
     
     
