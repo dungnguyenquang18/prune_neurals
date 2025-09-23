@@ -299,7 +299,7 @@ def l_infty_coreset(P):
         for x in K:
             S_prime.add(x.item() if hasattr(x, 'item') else x)
 
-    print(f"l∞-CORESET completed, selected {len(S_prime)} points.")
+    # print(f"l∞-CORESET completed, selected {len(S_prime)} points.")
     return sorted(list(S_prime))
 
 # Algorithm 2: CORESET
