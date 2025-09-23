@@ -1,3 +1,2 @@
-from .prune_neurals import *
+from .prunner import *
 from .methods import *
-from .prune_dataset import *
