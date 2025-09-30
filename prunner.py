@@ -42,7 +42,7 @@ class Prunner():
         print(f"Starting pruning layer 1 with prune_ratio={prune_ratio}...")
         
         W = layer2.weight.data.T.cpu()  # shape: l2, l3
-        print(f"W shape: {W.shape}")
+        # print(f"W shape: {W.shape}")
         l2, l3 = W.shape #need to modify d
         m = int(l2 * (1 - prune_ratio))  # Số nơ-ron giữ lại
         

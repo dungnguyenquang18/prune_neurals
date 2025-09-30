@@ -8,7 +8,7 @@ from torch.cuda.amp import GradScaler, autocast
 import torch.cuda as cuda
 import time
 import uuid
-from prune_neurals import PruneNeurals
+from prune_neurals import Prunner
 import copy
 
 
@@ -77,8 +77,8 @@ if __name__ == '__main__':
             print(f"Layer {i}: {type(layer).__name__}")
     
     test_model = copy.deepcopy(model) 
-    pruner = PruneNeurals()
-    new_layer_1, new_layer_2 = pruner.prune(test_model.classifier[0], test_model.classifier[3], prune_ratio=0.9, method='kmeans', device='cpu')
+    pruner = Prunner()
+    new_layer_1, new_layer_2 = pruner.prune_neurals(test_model.classifier[0], test_model.classifier[3], prune_ratio=0.9, method='kmeans', device='cpu')
     test_model.classifier[0] = new_layer_1
     test_model.classifier[3] = new_layer_2
 
