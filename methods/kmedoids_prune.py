@@ -14,21 +14,6 @@ from sklearn.decomposition import PCA
 
 
 
-# Thiết lập device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
-
-# Hàm tải mô hình VGG16 đã huấn luyện trước
-def load_pretrained_vgg16(model_path):
-    print("Starting to load pretrained VGG16 model...")
-    model = torchvision.models.vgg16(weights=None)
-    model.classifier[6] = nn.Linear(4096, 10)
-    state_dict = torch.load(model_path, weights_only=True)
-    new_state_dict = {key.replace("module.", ""): value for key, value in state_dict.items()}
-    model.load_state_dict(new_state_dict)
-    model.eval()
-    print("Model loaded successfully!")
-    return model.to(device)
 
 #step 1 - PCA: If the dimension of P is too big -> Using PCA to reduce dimention of P
 def pca(P: torch.Tensor, new_dim: int) -> Tuple[torch.Tensor, torch.Tensor]:
