@@ -343,6 +343,15 @@ def distance_based_clustering_prune(P, m):
                 usedP[orig_idxP] = True
                 usedQ[orig_idxQ] = True
                 s[orig_idxP] = (2 * (r ** 1.5)) / i
+                
+                
+            # Kiểm tra sau mỗi cluster
+            if usedP.sum() >= m:
+                break
+        
+        # Kiểm tra trước khi tiếp tục vòng lặp
+        if usedP.sum() >= m:
+            break
         
         # Update remaining points
             

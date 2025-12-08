@@ -211,12 +211,23 @@ def base_method_coreset(P_, m):
     i = 1
     sensitivities = np.zeros(n)
     indices = np.arange(n)
+    num_selected = 0
     while len(Q) >= 4 * np.linalg.matrix_rank(Q)**2:
         S = l_infty_coreset(Q)  # indices into current Q
         r = np.linalg.matrix_rank(Q)
         S_indices = list(map(int, S))
         for idx in S_indices:
             sensitivities[indices[idx]] = r**1.5 / i
+            num_selected += 1
+            
+            # Kiểm tra nếu đã chọn đủ m điểm thì break
+            if num_selected >= m:
+                break
+        
+        # Kiểm tra sau khi xử lý xong S
+        if num_selected >= m:
+            break
+            
         mask = np.ones(len(Q), dtype=bool)
         mask[S_indices] = False
         Q = Q[mask]
