@@ -266,7 +266,7 @@ def caratheodory_set(v, P, r):
 def caratheodory_set(v, P, r):
     distances = torch.norm(P - v, dim=1)
     idx = torch.topk(distances, r + 1, largest=False).indices
-    return P[idx]
+    return torch.tensor(idx, dtype=torch.long)
 
 # Thuật toán l∞-CORESET
 def l_infty_coreset(P):
