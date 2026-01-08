@@ -186,7 +186,7 @@ def l_infty_coreset(P):
     Tính l∞-CORESET trên ma trận P (đã được giảm chiều từ trước nếu cần).
     Không thực hiện giảm chiều trong hàm này.
     """
-    # print(f"Running l∞-CORESET on matrix of shape {P.shape}...")
+    print(f"Running l∞-CORESET on matrix of shape {P.shape}...")
     
     # Đảm bảo P là tensor
     if not isinstance(P, torch.Tensor):
