@@ -167,6 +167,11 @@ def caratheodory_set(v, P, r):
     
     return np.array(support, dtype=np.int64)
 
+def caratheodory_set(v, P, r):
+    distances = torch.norm(P - v, dim=1)
+    idx = torch.topk(distances, r + 1, largest=False).indices
+    return P[idx]
+
 # Thuật toán l∞-CORESET
 def l_infty_coreset(P_input):
     print(f"Running l∞-CORESET on matrix of shape {P_input.shape}...")
