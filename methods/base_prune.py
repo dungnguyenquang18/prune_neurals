@@ -7,6 +7,8 @@ import numpy as np
 from scipy.spatial import ConvexHull
 from sklearn.covariance import EllipticEnvelope
 from scipy.optimize import linprog
+from sklearn.decomposition import PCA
+from typing import Tuple
 
 # Thiết lập device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -24,37 +26,47 @@ def load_pretrained_vgg16(model_path):
     print("Model loaded successfully!")
     return model.to(device)
 
-# Hàm chuyển đổi P → P'
-def project_to_affine_subspace(P, r=None):
+# Hàm PCA: giảm chiều dữ liệu
+def pca(P: torch.Tensor, new_dim: int) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Chiếu P về không gian con affine bậc r
-    Trả về:
-        P_prime: (n, r)
-        Y: (d, r)
-        z: (d,)
+    Reduce dimension of tensor P using sklearn PCA.
+    Returns reduced data (torch.Tensor) and explained variances (torch.Tensor).
     """
-    z = P.mean(dim=0)  # gốc affine
-    X = P - z          # dịch gốc
-    U, S, Vh = torch.linalg.svd(X, full_matrices=False)
+    print(f"starting reduce dimensions from {P.shape[1]} to {new_dim}")
+    
+    # Đảm bảo P là tensor và có device
+    if not isinstance(P, torch.Tensor):
+        raise TypeError(f"P must be a torch.Tensor, got {type(P)}")
+    
+    device = P.device
+    
+    # Chuyển sang numpy
+    P_np = P.detach().cpu().numpy()
+    
+    # Fit PCA
+    new_dim = min(new_dim, P.shape[1])
+    pca_model = PCA(n_components=new_dim)
+    P_reduced_np = pca_model.fit_transform(P_np)
+    
+    # explained_variance_ tương đương với giá trị riêng (eigenvalues)
+    explained_var = pca_model.explained_variance_
+    
+    # Chuyển kết quả về torch.Tensor
+    P_reduced = torch.tensor(P_reduced_np, dtype=torch.float32, device=device)
+    explained_var_torch = torch.tensor(explained_var, dtype=torch.float32, device=device)
+    
+    return P_reduced, explained_var_torch
 
-    if r is None:
-        r = torch.linalg.matrix_rank(X).item()
-
-    Y = Vh[:r].T       # (d, r)
-    P_prime = X @ Y    # (n, r)
-    return P_prime, Y, z
-
-def recover_from_projection(P_prime_subset, Y, z):
+def compute_rank(matrix):
     """
-    Phục hồi các điểm từ không gian chiếu P' về không gian gốc P
-    Input:
-        P_prime_subset: (m, r)
-        Y: (d, r)
-        z: (d,)
-    Output:
-        P_subset_original: (m, d)
+    Compute the rank of a matrix.
     """
-    return P_prime_subset @ Y.T + z
+    if isinstance(matrix, torch.Tensor):
+        matrix_cpu = matrix.cpu().numpy()
+    else:
+        matrix_cpu = matrix
+    
+    return np.linalg.matrix_rank(matrix_cpu)
 
 # Hàm tính MVEE
 def compute_mvee_torch(P_prime):
@@ -169,79 +181,135 @@ def caratheodory_set(v, P, r):
 
 
 # Thuật toán l∞-CORESET
-def l_infty_coreset(P_input):
-    print(f"Running l∞-CORESET on matrix of shape {P_input.shape}...")
-    # Normalize input to torch tensor (on CPU for linear algebra and sklearn interop)
-    if hasattr(P_input, 'detach'):
-        P_torch = P_input.detach().cpu()
-    else:
-        P_torch = torch.from_numpy(np.array(P_input, dtype=np.float32))
+def l_infty_coreset(P):
+    """
+    Tính l∞-CORESET trên ma trận P (đã được giảm chiều từ trước nếu cần).
+    Không thực hiện giảm chiều trong hàm này.
+    """
+    # print(f"Running l∞-CORESET on matrix of shape {P.shape}...")
+    
+    # Đảm bảo P là tensor
+    if not isinstance(P, torch.Tensor):
+        P = torch.from_numpy(np.array(P, dtype=np.float32))
+    
+    n, d = P.shape
+    
+    # Handle edge cases
+    if n <= 1:
+        return [0] if n == 1 else []
+    
+    r = compute_rank(P)
+    r = min(r, d)  # Ensure r doesn't exceed dimensions
 
-    n, d = P_torch.shape
-    r = torch.linalg.matrix_rank(P_torch).item()
+    # Step 1: compute MVEE
+    G, c, vertices = compute_mvee_torch(P)
 
-    # Step 1: project to affine subspace of rank r
-    P_prime, Y, z = project_to_affine_subspace(P_torch, r)
-
-    # Step 2: compute MVEE in r-dimensional space
-    G, c, vertices = compute_mvee_torch(P_prime)
-
-    # Step 3: find coreset (collect indices in projected space)
-    indices_set = set()
+    # Step 2: find coreset (collect indices)
+    S_prime = set()
     for v in vertices:
-        K = caratheodory_set(v, P_prime, r)  # indices into P_prime
-        if K is None or len(K) == 0:
+        # Check if vertex contains invalid values
+        if torch.any(torch.isnan(v)) or torch.any(torch.isinf(v)):
             continue
-        for idx in np.atleast_1d(K):
-            indices_set.add(int(idx))
+            
+        K = caratheodory_set(v, P, r)
+        for x in K:
+            S_prime.add(x.item() if hasattr(x, 'item') else int(x))
 
-    indices_array = np.array(sorted(indices_set), dtype=np.int64)
-    print(f"l∞-CORESET completed, selected {len(indices_array)} points.")
-    return indices_array
+    # print(f"l∞-CORESET completed, selected {len(S_prime)} points.")
+    return sorted(list(S_prime))
 
 # Algorithm 2: CORESET
 def base_method_coreset(P_, m):
+    """
+    CORESET algorithm.
+    
+    Args:
+        P_: Ma trận input (torch.Tensor hoặc numpy array)
+        m: Số điểm cần chọn
+    """
     # Accept torch tensor or numpy array
     if hasattr(P_, 'detach'):
-        P = P_.detach().cpu().numpy()
+        P = P_.detach().cpu()
     else:
-        P = np.array(P_, copy=True)
+        P = torch.from_numpy(np.array(P_, dtype=np.float32))
+    
     print(f"Running CORESET to select {m} points from matrix of shape {P.shape}...")
-    n, d = P.shape
-    Q = P.copy()
+    
+    # Step 1: Giảm chiều bằng PCA nếu chiều > 8 (giống các thuật toán khác)
+    if P.shape[1] > 8:
+        Q, _ = pca(P, 8)
+    else:
+        Q = P
+    Q = Q.cpu()
+    
+    n = P.shape[0]
+    s = torch.zeros(n, dtype=torch.float32, device='cpu')
+    
+    # Tạo mapping từ điểm trong Q về index trong P
+    mappingP = {}
+    for i in range(n):
+        mappingP[tuple(Q[i].cpu().numpy().round(8))] = i
+    
+    usedP = torch.zeros(n, dtype=torch.bool, device='cpu')
+    
     i = 1
-    sensitivities = np.zeros(n)
-    indices = np.arange(n)
-    num_selected = 0
-    while len(Q) >= 4 * np.linalg.matrix_rank(Q)**2:
-        S = l_infty_coreset(Q)  # indices into current Q
-        r = np.linalg.matrix_rank(Q)
-        S_indices = list(map(int, S))
-        for idx in S_indices:
-            sensitivities[indices[idx]] = r**1.5 / i
-            num_selected += 1
+    l = Q.shape[0]
+    r = compute_rank(Q)
+    condition = 2 * (r ** 2)
+    
+    while l >= condition:
+        usedQ = torch.zeros(l, dtype=torch.bool, device='cpu')
+        mappingQ = {}
+        for j in range(l):
+            mappingQ[tuple(Q[j].cpu().numpy().round(8))] = j
+        
+        # Gọi l_infty_coreset trên Q (đã được giảm chiều)
+        S = l_infty_coreset(Q)
+        
+        for idx in S:
+            point = Q[idx]
+            point_tuple = tuple(point.cpu().numpy().round(8))
+            orig_idxP = mappingP[point_tuple]
+            orig_idxQ = mappingQ[point_tuple]
             
-            # Kiểm tra nếu đã chọn đủ m điểm thì break
-            if num_selected >= m:
+            usedP[orig_idxP] = True
+            usedQ[orig_idxQ] = True
+            s[orig_idxP] = (2 * (r ** 1.5)) / i
+            
+            # Kiểm tra nếu đã chọn đủ m điểm
+            if usedP.sum() >= m:
                 break
         
-        # Kiểm tra sau khi xử lý xong S
-        if num_selected >= m:
+        # Kiểm tra sau khi xử lý xong
+        if usedP.sum() >= m:
             break
-            
-        mask = np.ones(len(Q), dtype=bool)
-        mask[S_indices] = False
-        Q = Q[mask]
-        indices = indices[mask]
+        
+        # Update remaining points
+        Q = Q[~usedQ]
         i += 1
-    r = np.linalg.matrix_rank(Q)
-    for j in range(len(Q)):
-        sensitivities[indices[j]] = 2 * r**1.5 / i
-    t = sensitivities.sum()
-    probs = sensitivities / t
+        l = Q.shape[0]
+        if l == 0:
+            break
+        r = compute_rank(Q)
+        condition = 2 * (r ** 2)
+    
+    # Gán sensitivity cho các điểm còn lại
+    if Q.shape[0] > 0:
+        for j in range(Q.shape[0]):
+            point_tuple = tuple(Q[j].cpu().numpy().round(8))
+            if point_tuple in mappingP:
+                s[mappingP[point_tuple]] = (2 * (r ** 1.5)) / i
+    
+    # Tính xác suất và lấy mẫu
+    t = s.sum()
+    probs = s / t
+    probs = np.array(probs, dtype=np.float64)
+    probs = probs / probs.sum()  # Đảm bảo tổng = 1
+    
     sampled_indices = np.random.choice(n, size=m, replace=False, p=probs)
     C = P[sampled_indices]
     u = t / (m * probs[sampled_indices])
+    
     print(f"CORESET completed, selected {len(C)} points.")
     return C, u, sampled_indices
 
