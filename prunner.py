@@ -1,5 +1,5 @@
 import torch.nn as nn
-from methods import base_method_coreset, kmean_prune, distance_based_clustering_prune, kmedoids_prune
+from .methods import kmedoids_prune, kmean_prune, distance_based_clustering_prune, base_method_coreset
 import torch
 
 class Prunner():

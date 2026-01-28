@@ -8,7 +8,7 @@ from torch.cuda.amp import GradScaler, autocast
 import torch.cuda as cuda
 import time
 import uuid
-from prunner import Prunner
+from .prunner import Prunner
 import copy
 import multiprocessing
 from sklearn.metrics import precision_score, recall_score, f1_score
