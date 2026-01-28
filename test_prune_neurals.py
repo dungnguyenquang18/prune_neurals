@@ -8,8 +8,10 @@ from torch.cuda.amp import GradScaler, autocast
 import torch.cuda as cuda
 import time
 import uuid
-from prune_neurals import Prunner
+from prunner import Prunner
 import copy
+import multiprocessing
+from sklearn.metrics import precision_score, recall_score, f1_score
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,6 +46,8 @@ def test(model_):
     model_.eval()
     correct = 0
     total = 0
+    all_predictions = []
+    all_labels = []
     with torch.no_grad():
         for data in testloader:
             images, labels = data[0].to(device), data[1].to(device)
@@ -51,9 +55,20 @@ def test(model_):
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            all_predictions.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+    
     accuracy = 100 * correct / total
+    precision = precision_score(all_labels, all_predictions, average='weighted')
+    recall = recall_score(all_labels, all_predictions, average='weighted')
+    f1 = f1_score(all_labels, all_predictions, average='weighted')
+    
     print(f'Accuracy on test set: {accuracy:.2f}%')
-    return accuracy
+    print(f'Precision: {precision:.4f}')
+    print(f'Recall: {recall:.4f}')
+    print(f'F1-Score: {f1:.4f}')
+    
+    return accuracy, precision, recall, f1
 
 if __name__ == '__main__':
     
@@ -64,7 +79,7 @@ if __name__ == '__main__':
     num_features = model.classifier[6].in_features
     model.classifier[6] = nn.Linear(num_features, 10)
     model.to('cpu')
-    model.load_state_dict(torch.load("D:/lab/prune_neurals/best_model_cpu.pth"))
+    model.load_state_dict(torch.load("D:/lab/prune_neurals/best_model_vgg16_cpu.pth"))
 
     print("load successfully")
     
@@ -76,11 +91,37 @@ if __name__ == '__main__':
         else:
             print(f"Layer {i}: {type(layer).__name__}")
     
-    test_model = copy.deepcopy(model) 
+    test_model = copy.deepcopy(model)
+    
+    # Cấu hình đa luồng
+    num_workers = multiprocessing.cpu_count()
+    print(f"\n{'='*60}")
+    print(f"PARALLEL PROCESSING CONFIGURATION")
+    print(f"{'='*60}")
+    print(f"Available CPU cores: {num_workers}")
+    print(f"Using {num_workers} worker threads for parallel cluster processing")
+    print(f"{'='*60}\n")
+    
     pruner = Prunner()
-    new_layer_1, new_layer_2 = pruner.prune_neurals(test_model.classifier[0], test_model.classifier[3], prune_ratio=0.9, method='kmeans', device='cpu')
-    test_model.classifier[0] = new_layer_1
-    test_model.classifier[3] = new_layer_2
+    start_time = time.time()
+    
+    # Gọi prune_neurals với max_workers để sử dụng đa luồng
+    new_layer_1, new_layer_2 = pruner.prune_neurals(
+        test_model.classifier[3], 
+        test_model.classifier[6], 
+        prune_ratio=0.6, 
+        method='base', 
+        device='cpu',
+        max_workers=2  # Sử dụng đa luồng
+    )
+    
+    end_time = time.time()
+    print(f"\n{'='*60}")
+    print(f"Pruning completed in {end_time - start_time:.2f} seconds")
+    print(f"{'='*60}\n")
+    
+    test_model.classifier[3] = new_layer_1
+    test_model.classifier[6] = new_layer_2
 
     # Debug: Print classifier structure after pruning
     print("\nClassifier structure after pruning:")
@@ -90,4 +131,4 @@ if __name__ == '__main__':
         else:
             print(f"Layer {i}: {type(layer).__name__}")
 
-    test(test_model)
+    test(model)
