@@ -5,10 +5,8 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import numpy as np
 from scipy.spatial import ConvexHull
-from sklearn.covariance import EllipticEnvelope
 from scipy.optimize import linprog
 from typing import Tuple, List
-import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -172,61 +170,127 @@ def compute_rank(matrix, device=None):
 
 
 
-# Hàm tính MVEE
-def compute_mvee_torch(P_prime):
-    n, d = P_prime.shape
+# Hàm tính MVEE (Khachiyan algorithm)
+def compute_MVEE(P: torch.Tensor, tolerance=1e-3, max_iter=1000):
+    """
+    Tính Minimum Volume Enclosing Ellipsoid (MVEE) cho tập điểm P.
+    
+    Args:
+        P (torch.Tensor): Tensor kích thước (N, d) chứa N điểm dữ liệu d-chiều.
+        tolerance (float): Ngưỡng sai số để dừng thuật toán.
+        max_iter (int): Số vòng lặp tối đa.
+        
+    Returns:
+        G (torch.Tensor): Ma trận hình dạng (d, d) xác định ellipsoid (x-c)^T G (x-c) <= 1.
+        c (torch.Tensor): Vector tâm ellipsoid (d,).
+        vertices (torch.Tensor): Tensor chứa 2*d điểm giao của các bán trục với mặt ellipsoid.
+    """
+    # Đảm bảo dữ liệu là kiểu float
+    if P.dtype != torch.float32 and P.dtype != torch.float64:
+        P = P.float()
+        
+    N, d = P.shape
     
     # Handle edge cases
-    if n <= 1:
-        # If only one point, return it as the center with identity covariance
-        c = P_prime.mean(dim=0)
-        G = torch.eye(d, device=P_prime.device, dtype=P_prime.dtype)
-        vertices = P_prime.unsqueeze(0)  # Single vertex
+    if N <= 1:
+        c = P.mean(dim=0) if N == 1 else torch.zeros(d, device=P.device, dtype=P.dtype)
+        G = torch.eye(d, device=P.device, dtype=P.dtype)
+        vertices = P.unsqueeze(0) if N == 1 else torch.zeros(1, d, device=P.device, dtype=P.dtype)
         return G, c, vertices
     
-    P_np = P_prime.cpu().numpy()
-
-    # Check if points are all the same
-    if np.allclose(P_np, P_np[0], atol=1e-8):
-        c = torch.from_numpy(P_np[0]).float()
-        G = torch.eye(d, device=P_prime.device, dtype=P_prime.dtype)
-        vertices = c.unsqueeze(0)  # Single vertex
+    # Check if all points are the same
+    if torch.allclose(P, P[0].unsqueeze(0), atol=1e-8):
+        c = P[0]
+        G = torch.eye(d, device=P.device, dtype=P.dtype)
+        vertices = c.unsqueeze(0)
         return G, c, vertices
-
-    # Sử dụng EllipticEnvelope để tính Löwner ellipsoid
-    try:
-        clf = EllipticEnvelope(support_fraction=1.0, contamination=0.01, random_state=42)
-        clf.fit(P_np)
-        c_np = clf.location_
-        Sigma_np = clf.covariance_
+    
+    # 1. Lift points to d+1 dimensions (Khachiyan lifting scheme)
+    # Q có kích thước (d+1, N)
+    Q = torch.vstack([P.t(), torch.ones(1, N, device=P.device, dtype=P.dtype)])
+    
+    # 2. Khởi tạo trọng số u (uniform distribution)
+    u = torch.ones(N, device=P.device, dtype=P.dtype) / N
+    
+    # Kích thước không gian nâng
+    n_lifted = d + 1 
+    
+    # 3. Vòng lặp Khachiyan (Frank-Wolfe algorithm)
+    for i in range(max_iter):
+        # Tính ma trận hiệp phương sai có trọng số trong không gian nâng: X = Q diag(u) Q^T
+        # Cách tính hiệu quả: X = (Q * u) @ Q.T
+        X = (Q * u) @ Q.t()
         
-        # Check for singular covariance matrix
-        if np.linalg.cond(Sigma_np) > 1e12:
-            # Use regularized covariance
-            Sigma_np = Sigma_np + 1e-6 * np.eye(d)
-    except:
-        # Fallback: use sample mean and covariance
-        c_np = np.mean(P_np, axis=0)
-        Sigma_np = np.cov(P_np.T) + 1e-6 * np.eye(d)
+        # Nghịch đảo ma trận X
+        try:
+            M_inv = torch.linalg.inv(X)
+        except RuntimeError:
+            # Xử lý trường hợp ma trận suy biến (thường do dữ liệu đồng phẳng hoặc quá ít điểm)
+            # Thêm nhiễu nhỏ vào đường chéo
+            X = X + torch.eye(n_lifted, device=P.device, dtype=P.dtype) * 1e-6
+            M_inv = torch.linalg.inv(X)
 
-    c = torch.from_numpy(c_np).float()
-    Sigma = torch.from_numpy(Sigma_np).float()
+        # Tính variance của mỗi điểm: V_i = q_i^T * M_inv * q_i
+        # Đây là đường chéo của kết quả Q.T @ M_inv @ Q
+        M_Q = M_inv @ Q
+        variances = torch.sum(Q * M_Q, dim=0) # (N,)
+        
+        # Tìm điểm có variance lớn nhất (điểm xa nhất theo chuẩn Mahalanobis hiện tại)
+        max_var_idx = torch.argmax(variances)
+        max_var = variances[max_var_idx]
+        
+        # Điều kiện dừng: max_var <= (d+1)(1 + tolerance)
+        # Theo lý thuyết, tại điểm tối ưu, max_var = d+1
+        if max_var <= n_lifted * (1 + tolerance):
+            break
+            
+        # Tính bước nhảy beta (step size)
+        # Công thức cập nhật tối ưu cho thuật toán Khachiyan
+        beta = (max_var - n_lifted) / ((n_lifted) * (max_var - 1))
+        
+        # Cập nhật trọng số u
+        u = (1 - beta) * u
+        u[max_var_idx] += beta
+
+    # 4. Khôi phục tham số Ellipsoid từ trọng số u
+    # Tâm c = P^T * u (trung bình có trọng số)
+    c = P.t() @ u
     
-    # Ensure Sigma is positive definite
-    eigenvalues, eigenvectors = torch.linalg.eigh(Sigma)
-    eigenvalues = torch.clamp(eigenvalues, min=1e-8)  # Ensure positive eigenvalues
-    Sigma = eigenvectors @ torch.diag(eigenvalues) @ eigenvectors.T
-    G = torch.linalg.inv(Sigma)
-
-    # Tính 2*d vertices: các điểm tiếp xúc của ellipsoid với các mặt phẳng theo trục chính
-    sqrt_eigenvalues = torch.sqrt(eigenvalues)
-    vertices_list = []
+    # Tính ma trận hiệp phương sai thực tế của dữ liệu gốc (d x d)
+    # Sigma = (P - c)^T diag(u) (P - c)
+    P_centered = P.t() - c.unsqueeze(1)
+    Sigma = (P_centered * u) @ P_centered.t()
+    
+    # Đảm bảo Sigma là positive definite trước khi tính eigenvalues
+    eigenvalues_sigma, eigenvectors_sigma = torch.linalg.eigh(Sigma)
+    eigenvalues_sigma = torch.clamp(eigenvalues_sigma, min=1e-8)  # Ensure positive eigenvalues
+    
+    # Tái tạo Sigma với eigenvalues đã regularize
+    Sigma = eigenvectors_sigma @ torch.diag(eigenvalues_sigma) @ eigenvectors_sigma.T
+    
+    # Ma trận hình dạng G = Sigma^-1 (không chia cho d, giống hàm cũ)
+    # Phương trình Ellipsoid: (x-c)^T G (x-c) <= 1
+    try:
+        G = torch.linalg.inv(Sigma)
+    except RuntimeError:
+        # Nếu Sigma singular, thêm regularization
+        Sigma = Sigma + torch.eye(d, device=P.device, dtype=P.dtype) * 1e-6
+        G = torch.linalg.inv(Sigma)
+    
+    # 5. Tính các điểm "vertices" (giao điểm các bán trục)
+    # Vertices được tính từ eigenvalues của Sigma (giống hàm cũ)
+    # Radii = sqrt(eigenvalues của Sigma)
+    sqrt_eigenvalues = torch.sqrt(eigenvalues_sigma)
+    
+    # Tính các đỉnh: c +/- sqrt(eigenvalue) * eigenvector
+    verts = []
     for i in range(d):
-        v_i = eigenvectors[:, i]
+        v_i = eigenvectors_sigma[:, i]  # Vector riêng thứ i của Sigma
         # Thêm hai điểm: +sqrt(λ_i) * v_i và -sqrt(λ_i) * v_i
-        vertices_list.append(c + sqrt_eigenvalues[i] * v_i)
-        vertices_list.append(c - sqrt_eigenvalues[i] * v_i)
-    vertices = torch.stack(vertices_list)  # Kích thước: (2*d, d)
+        verts.append(c + sqrt_eigenvalues[i] * v_i)
+        verts.append(c - sqrt_eigenvalues[i] * v_i)
+        
+    vertices = torch.stack(verts)  # Kích thước: (2*d, d)
 
     return G, c, vertices
 
@@ -257,7 +321,7 @@ def caratheodory_set(v, P, r):
     b_eq = np.hstack((v, 1))
     c = np.zeros(n)  # Minimize sum of weights (feasibility problem)
     
-    res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')
+    res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')    
     
     if not res.success:
         return torch.tensor([], dtype=torch.long)  # Return empty tensor if no feasible solution
@@ -335,20 +399,25 @@ def l_infty_coreset(P):
         P_prime = P
 
     # Bước 2: tính MVEE trong không gian r chiều
-    G, c, vertices = compute_mvee_torch(P_prime)
+    G, c, vertices = compute_MVEE(P_prime)
 
     # Bước 3: tìm coreset
     S_prime = set()
+    valid_vertices = 0
+    vertices_with_coreset = 0
     for v in vertices:
         # Check if vertex contains invalid values
         if torch.any(torch.isnan(v)) or torch.any(torch.isinf(v)):
             continue
+        valid_vertices += 1
             
         K = caratheodory_set(v, P_prime, r)
+        if len(K) > 0:
+            vertices_with_coreset += 1
         for x in K:
             S_prime.add(x.item() if hasattr(x, 'item') else x)
 
-    # print(f"l∞-CORESET completed, selected {len(S_prime)} points.")
+    print(f"l∞-CORESET: {valid_vertices}/{len(vertices)} valid vertices, {vertices_with_coreset} found coreset, selected {len(S_prime)} points.")
     return sorted(list(S_prime))
 
 

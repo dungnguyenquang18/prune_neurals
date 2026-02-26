@@ -15,16 +15,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 
 
-from .utils import caratheodory_set, compute_mvee_torch, compute_rank, l_infty_coreset, distance_based_clustering, pca
+from .utils import  compute_rank, l_infty_coreset, distance_based_clustering, pca
 
 
 #step 2 - Cluster:
-# Estimate the number of clusters(k): k = n // (d * 50)
+
 
 def cluster(P):
     n, d = P.shape
     # Estimate number of clusters
-    k = n // (d * 50)
+    k = int(np.log2(n))
     print(f"Estimated number of clusters (k): {k+1}")
     # Here you would implement your clustering algorithm, e.g., k-means
     # For simplicity, we will just return the estimated k
@@ -119,10 +119,7 @@ def distance_based_clustering_prune(P, m, max_workers=None):
                 except Exception as exc:
                     print(f"Cluster {cluster_idx} generated an exception: {exc}")
         
-        # Kiểm tra trước khi tiếp tục vòng lặp
-        if usedP.sum() >= m:
-            break
-        
+ 
         # Update remaining points
             
         Q = Q[~usedQ]

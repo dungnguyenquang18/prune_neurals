@@ -10,7 +10,7 @@ from scipy.optimize import linprog
 from sklearn.decomposition import PCA
 from typing import Tuple
 
-from .utils import caratheodory_set, compute_mvee_torch, compute_rank, l_infty_coreset, pca
+from .utils import  compute_rank, l_infty_coreset, pca
 
 # Algorithm 2: CORESET
 def base_method_coreset(P_, m):

@@ -5,8 +5,8 @@ import torch
 class Prunner():
     def __init__(self):
         self.method_name = {
-            'Prune neurels': ['base', 'kmeans', 'distance-based-clustering', 'kmedoids'],
-            'Prune dataset': ['base', 'kmeans', 'distance-based-clustering', 'kmedoids']
+            'Prune neurels': ['base', 'kmeans', 'distance', 'kmedoids'],
+            'Prune dataset': ['base', 'kmeans', 'distance', 'kmedoids']
                             } 
     
     
@@ -29,7 +29,7 @@ class Prunner():
                 coreset = base_method_coreset
             elif method == 'kmeans':
                 coreset = kmean_prune
-            elif method == 'distance-based-clustering':
+            elif method == 'distance':
                 coreset = distance_based_clustering_prune
             else:
                 coreset = kmedoids_prune
@@ -84,10 +84,10 @@ class Prunner():
                 coreset = base_method_coreset
             elif method == 'kmeans':
                 coreset = kmean_prune
-            elif method == 'distance_based_clustering_prune':
+            elif method == 'distance':
                 coreset = distance_based_clustering_prune
             else:
-                coreset = kmedoids
+                coreset = kmedoids_prune
         except Exception as e:
             print(f'Method name eror. The method name must be in {self.method_name}')
         

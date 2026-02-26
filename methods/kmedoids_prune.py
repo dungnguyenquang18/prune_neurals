@@ -16,14 +16,14 @@ import multiprocessing
 
 
 
-from .utils import caratheodory_set, compute_mvee_torch, compute_rank, l_infty_coreset, distance_based_clustering, pca, kmedoids
+from .utils import  compute_rank, l_infty_coreset, distance_based_clustering, pca, kmedoids
 #step 2 - Cluster:
-# Estimate the number of clusters(k): k = n // (d * 50)
+# Estimate the number of clusters(k): k = int(np.log2(n))
 
 def cluster(P):
     n, d = P.shape
     # Estimate number of clusters
-    k = n // (d * 50)
+    k = int(np.log2(n))
     print(f"Estimated number of clusters (k): {k+1}")
     # Here you would implement your clustering algorithm, e.g., k-means
     # For simplicity, we will just return the estimated k
@@ -110,20 +110,12 @@ def kmedoids_prune(P, m, max_workers=None):
                         usedQ[orig_idxQ] = True
                         s[orig_idxP] = sensitivity_value
                         
-                        # Kiểm tra nếu đã chọn đủ m điểm
-                        if usedP.sum() >= m:
-                            break
-                    
-                    # Kiểm tra sau khi xử lý xong mỗi cluster
-                    if usedP.sum() >= m:
-                        break
+                        
                         
                 except Exception as exc:
                     print(f"Cluster {cluster_idx} generated an exception: {exc}")
         
-        # Kiểm tra trước khi tiếp tục vòng lặp
-        if usedP.sum() >= m:
-            break
+
         
         # Update remaining points
             
