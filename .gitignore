@@ -4,3 +4,9 @@
 *.pyc
 test.py
 test.ipynb
+test_prune_neural.py
+cifar10/
+logs/
+*.pth
+*.pt
+best_model_vgg16_cpu.pth
