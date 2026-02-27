@@ -128,7 +128,7 @@ def prune(model, combo, prune_ratio, args):
         else:
             print(f"Layer {i}: {type(layer).__name__}")
 
-    accuracy, precision, recall, f1 = test(model)
+    accuracy, precision, recall, f1 = test(test_model)
     
     return total_time, accuracy, precision, recall, f1
 
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     num_features = model.classifier[6].in_features
     model.classifier[6] = nn.Linear(num_features, 10)
     model.to('cpu')
-    model.load_state_dict(torch.load("best_model_vgg16_cpu.pth"))
+    model.load_state_dict(torch.load("/home/dev/dungnq57work/pycharm_dug/best_model_vgg16_cpu.pth"))
 
     print("load successfully")
     
@@ -169,17 +169,17 @@ if __name__ == '__main__':
                 precision += precision_trial
                 recall += recall_trial
                 f1 += f1_trial
-                break
-                # print(f"Trial {trial+1}/3 for combo {combo} with prune ratio {prune_ratio:.1f} completed. Time: {total_time_trial:.2f}s, Accuracy: {accuracy_trial:.2f}%, Precision: {precision_trial:.4f}, Recall: {recall_trial:.4f}, F1-Score: {f1_trial:.4f}")
+                # break
+                print(f"Trial {trial+1}/3 for combo {combo} with prune ratio {prune_ratio:.1f} completed. Time: {total_time_trial:.2f}s, Accuracy: {accuracy_trial:.2f}%, Precision: {precision_trial:.4f}, Recall: {recall_trial:.4f}, F1-Score: {f1_trial:.4f}")
             results[idx][prune_ratio]['time'] = total_time / 3
             results[idx][prune_ratio]['accuracy'] = accuracy / 3
             results[idx][prune_ratio]['precision'] = precision / 3
             results[idx][prune_ratio]['recall'] = recall / 3
             results[idx][prune_ratio]['f1'] = f1 / 3
-            break
-            # print("Done pruning trial for combo {} with prune ratio {:.1f}".format(combo, prune_ratio))
-        # print(f"Completed pruning layers {combo[0]} and {combo[1]} with prune ratio {prune_ratio:.1f}. Time: {results[idx][prune_ratio]['time']:.2f}s, Accuracy: {results[idx][prune_ratio]['accuracy']:.2f}%, Precision: {results[idx][prune_ratio]['precision']:.4f}, Recall: {results[idx][prune_ratio]['recall']:.4f}, F1-Score: {results[idx][prune_ratio]['f1']:.4f}")
-        break
+            # break
+            print("Done pruning trial for combo {} with prune ratio {:.1f}".format(combo, prune_ratio))
+        print(f"Completed pruning layers {combo[0]} and {combo[1]} with prune ratio {prune_ratio:.1f}. Time: {results[idx][prune_ratio]['time']:.2f}s, Accuracy: {results[idx][prune_ratio]['accuracy']:.2f}%, Precision: {results[idx][prune_ratio]['precision']:.4f}, Recall: {results[idx][prune_ratio]['recall']:.4f}, F1-Score: {results[idx][prune_ratio]['f1']:.4f}")
+        # break
     with open(f'results/{args.method}.json', 'w') as f:
         json.dump(results, f, indent=4)
     print(f"Results saved to results/{args.method}.json")
