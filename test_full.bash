@@ -17,4 +17,4 @@ echo "Experiments finished. Pushing results to Git..."
 
 git add .
 git commit -m "Run pruning experiments and save results to logs"
-git push origin dungnq57  # Lưu ý: Kiểm tra lại tên branch của bạn là dungnq0 hay dungnq57
+git push origin dungnq  
