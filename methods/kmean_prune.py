@@ -11,9 +11,6 @@ from typing import Tuple, List
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
-
 from .utils import  compute_rank, l_infty_coreset, pca, kmeans
 
 
@@ -36,41 +33,16 @@ def cluster(P):
 
 
 
-def process_cluster(cluster_idx, cluster_, mappingP, mappingQ, r, i):
-    """
-    Worker function để xử lý một cluster song song.
-    Trả về list các tuple (orig_idxP, orig_idxQ, sensitivity_value)
-    """
-    results = []
-    S = l_infty_coreset(cluster_)
-    
-    for idx in S:
-        point = cluster_[idx]
-        point_tuple = tuple(point.cpu().numpy().round(8))
-        orig_idxP = mappingP[point_tuple]
-        orig_idxQ = mappingQ[point_tuple]
-        sensitivity_value = (2 * (r ** 1.5)) / i
-        results.append((orig_idxP, orig_idxQ, sensitivity_value))
-    
-    return results
-
-
 # Algorithm 2: CORESET
-def kmean_prune(P, m, max_workers=None):
+def kmean_prune(P, m):
     """
-    CORESET với hỗ trợ đa luồng.
+    CORESET algorithm.
     
     Args:
         P: Ma trận input
         m: Số điểm cần chọn
-        max_workers: Số luồng tối đa (None = số CPU cores)
     """
-    
-    if max_workers is None:
-        max_workers = 1
-    
     print(f"Running CORESET to select {m} points from matrix of shape {P.shape}...")
-    print(f"Using {max_workers} worker threads for parallel processing")
     if P.shape[0] > 8:
         Q, _ = pca(P, 8)
     else:
@@ -98,31 +70,17 @@ def kmean_prune(P, m, max_workers=None):
             mappingQ[tuple(Q[j].cpu().numpy().round(8))] = j
         clusters, _ = cluster(Q)
         
-        # Xử lý song song các cluster
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit tất cả các cluster tasks
-            future_to_cluster = {
-                executor.submit(process_cluster, cluster_idx, cluster_, mappingP, mappingQ, r, i): cluster_idx
-                for cluster_idx, cluster_ in enumerate(clusters)
-            }
-            
-            # Thu thập kết quả khi các task hoàn thành
-            for future in as_completed(future_to_cluster):
-                cluster_idx = future_to_cluster[future]
-                try:
-                    results = future.result()
-                    # Cập nhật các giá trị từ kết quả
-                    for orig_idxP, orig_idxQ, sensitivity_value in results:
-                        usedP[orig_idxP] = True
-                        usedQ[orig_idxQ] = True
-                        s[orig_idxP] = sensitivity_value
-                        
-                        
-                        
-                except Exception as exc:
-                    print(f"Cluster {cluster_idx} generated an exception: {exc}")
-        
-        
+        for cluster_idx, cluster_ in enumerate(clusters):
+            S = l_infty_coreset(cluster_)
+            for idx in S:
+                point = cluster_[idx]
+                point_tuple = tuple(point.cpu().numpy().round(8))
+                orig_idxP = mappingP[point_tuple]
+                orig_idxQ = mappingQ[point_tuple]
+                sensitivity_value = (2 * (r ** 1.5)) / i
+                usedP[orig_idxP] = True
+                usedQ[orig_idxQ] = True
+                s[orig_idxP] = sensitivity_value
         
         # Update remaining points
             

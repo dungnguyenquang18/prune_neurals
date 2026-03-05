@@ -16,5 +16,5 @@ python test_prune_neurals.py -method kmedoids > logs/kmedoids.log 2>&1
 echo "Experiments finished. Pushing results to Git..."
 
 git add .
-git commit -m "Run pruning experiments and save results to logs"
-git push origin dungnq  
+git commit -m "Run pruning experiments and save results to logs single thread"
+git push origin dungnq_single_thread
