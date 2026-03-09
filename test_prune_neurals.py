@@ -101,14 +101,13 @@ def prune(model, combo, prune_ratio, args):
     pruner = Prunner()
     start_time = time.time()
     
-    # Gọi prune_neurals với max_workers để sử dụng đa luồng
+    # Gọi prune_neurals
     new_layer_1, new_layer_2 = pruner.prune_neurals(
         test_model.classifier[combo[0]], 
         test_model.classifier[combo[1]], 
         prune_ratio=prune_ratio, 
         method=args.method, 
-        device='cpu',
-        max_workers=2  # Sử dụng đa luồng
+        device='cpu'
     )
     
     end_time = time.time()

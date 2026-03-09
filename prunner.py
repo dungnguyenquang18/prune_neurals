@@ -11,7 +11,7 @@ class Prunner():
     
     
     
-    def prune_neurals(self, layer1:nn.Linear, layer2:nn.Linear,prune_ratio: float, method: str, device: None, max_workers: int = None):
+    def prune_neurals(self, layer1:nn.Linear, layer2:nn.Linear,prune_ratio: float, method: str, device: None):
         try:    
             layer1.out_features != layer2.in_features
         except Exception as e:
@@ -46,11 +46,7 @@ class Prunner():
         l2, l3 = W.shape #need to modify d
         m = int(l2 * (1 - prune_ratio))  # Số nơ-ron giữ lại
         
-        # Gọi coreset với max_workers nếu method hỗ trợ
-        if max_workers is not None and method in ['kmeans', 'distance_based_clustering_prune', 'kmedoids']:
-            C, u, sampled_indices = coreset(W, m, max_workers=max_workers) #shape: m, l3
-        else:
-            C, u, sampled_indices = coreset(W, m) #shape: m, l3
+        C, u, sampled_indices = coreset(W, m) #shape: m, l3
         u_tensor = torch.tensor(u, device=device, dtype=torch.float32)
         new_l2 = len(C)
         new_W = W[sampled_indices].to(device) #shape: new_l2, l3
@@ -69,7 +65,7 @@ class Prunner():
         return new_layer1, new_layer2
 
 
-    def prune_dataset(self, matrix: torch.Tensor, prune_ratio: float, method: str, device: None, max_workers: int = None):
+    def prune_dataset(self, matrix: torch.Tensor, prune_ratio: float, method: str, device: None):
         
             
         if device is None:
@@ -97,11 +93,7 @@ class Prunner():
         
         print(f"Starting pruning data prune_ratio={prune_ratio}...")
         
-        # Gọi coreset với max_workers nếu method hỗ trợ
-        if max_workers is not None and method in ['kmeans', 'distance_based_clustering_prune', 'kmedoids']:
-            _, _, select_indices = coreset(matrix, m, max_workers=max_workers)
-        else:
-            _, _, select_indices = coreset(matrix, m)
+        _, _, select_indices = coreset(matrix, m)
         
         return select_indices
 

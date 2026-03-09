@@ -5,6 +5,9 @@
 
 # Chạy tuần tự các phương pháp pruning
 # Sử dụng && để đảm bảo nếu một bước lỗi nặng thì có thể dừng lại (hoặc dùng ; nếu muốn chạy bất chấp)
+
+cd /home/dev/dungnq57work/pycharm_dug/prune_neurals
+source /home/dev/dungnq57work/pycharm_dug/.venv/bin/activate
 echo "Starting pruning experiments..."
 
 python test_prune_neurals.py -method base > logs/base.log 2>&1 && \
