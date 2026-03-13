@@ -10,14 +10,14 @@ cd /home/dev/dungnq57work/pycharm_dug/prune_neurals
 source /home/dev/dungnq57work/pycharm_dug/.venv/bin/activate
 echo "Starting pruning experiments..."
 
-python test_prune_neurals.py -method base > logs/base.log 2>&1 && \
-python test_prune_neurals.py -method kmeans > logs/kmeans.log 2>&1 && \
-python test_prune_neurals.py -method distance-based-clustering > logs/distance-based-clustering.log 2>&1 && \
-python test_prune_neurals.py -method kmedoids > logs/kmedoids.log 2>&1
+python test_prune_lenet.py -method base > logs/base.log 2>&1 && \
+# python test_prune_lenet.py -method kmeans > logs/kmeans.log 2>&1 && \
+# python test_prune_lenet.py -method distance-based-clustering > logs/distance-based-clustering.log 2>&1 && \
+# python test_prune_lenet.py -method kmedoids > logs/kmedoids.log 2>&1
 
 # Sau khi tất cả các lệnh trên chạy xong, tiến hành Git
 echo "Experiments finished. Pushing results to Git..."
 
 git add .
-git commit -m "Run pruning experiments and save results to logs single thread"
+git commit -m "Run pruning experiments and save results to logs single thread with lenet model"
 git push origin dungnq_single_thread
