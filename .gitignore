@@ -10,3 +10,4 @@ logs/
 *.pth
 *.pt
 best_model_vgg16_cpu.pth
+data/
